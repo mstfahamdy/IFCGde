@@ -2,34 +2,42 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { SalesOrder } from "../types";
 import { PRODUCT_CATALOG } from "../constants";
 
-// Initialize the Gemini API client with the API key from environment variables
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe initialization
+const getApiKey = () => {
+  return (window as any).process?.env?.API_KEY || "";
+};
 
 const productNames = PRODUCT_CATALOG.join(", ");
 
 export const parseOrderFromText = async (text: string): Promise<Partial<SalesOrder>> => {
-  // Use gemini-3-flash-preview for extraction tasks as per guidelines
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error("API Key is missing. Please ensure it is configured.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const model = "gemini-3-flash-preview";
   
   const systemInstruction = `
-    You are a data entry assistant for a food distribution company. 
-    Your job is to extract sales order details from informal text (like WhatsApp messages).
+    You are a professional Sales Data Extraction assistant for IFCG (International Food Choice Group).
+    Extract sales order details from unstructured text (WhatsApp messages).
     
-    The available products in the catalog are:
+    CATALOG PRODUCTS:
     ${productNames}
 
-    Rules:
-    1. Try to match the item name in the text to the closest match in the catalog. 
-    2. If the item is not in the catalog, use the name provided in the text.
-    3. Extract the quantity.
-    4. Extract the Client Name and Location (Area) if available.
-    5. Return the date if mentioned, otherwise today's date in YYYY-MM-DD.
+    EXTRACTION RULES:
+    1. Match item names to the CATALOG provided above as closely as possible.
+    2. Extract exact quantities as integers.
+    3. Identify "customerName" and "areaLocation".
+    4. If a date is mentioned for delivery/receiving, extract it as "receivingDate" (YYYY-MM-DD).
+    5. Detect "deliveryShift" if mentioned (أول نقلة, ثانى نقلة, باليل).
+    6. Return ONLY a valid JSON object.
   `;
 
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: text,
+      contents: [{ role: "user", parts: [{ text }] }],
       config: {
         systemInstruction,
         responseMimeType: "application/json",
@@ -38,7 +46,8 @@ export const parseOrderFromText = async (text: string): Promise<Partial<SalesOrd
           properties: {
             customerName: { type: Type.STRING },
             areaLocation: { type: Type.STRING },
-            orderDate: { type: Type.STRING },
+            receivingDate: { type: Type.STRING },
+            deliveryShift: { type: Type.STRING, enum: ["أول نقلة", "ثانى نقلة", "باليل"] },
             items: {
               type: Type.ARRAY,
               items: {
@@ -50,21 +59,21 @@ export const parseOrderFromText = async (text: string): Promise<Partial<SalesOrd
                 },
                 required: ["itemName", "quantity"]
               }
-            }
+            },
+            overallNotes: { type: Type.STRING }
           },
-          required: ["customerName", "areaLocation", "items"]
+          required: ["customerName", "items"]
         }
       }
     });
 
-    // Access text property directly as per guidelines
     const resultText = response.text;
     if (resultText) {
       return JSON.parse(resultText.trim()) as Partial<SalesOrder>;
     }
-    throw new Error("No data returned from AI");
-  } catch (error) {
-    console.error("Error parsing order:", error);
-    throw error;
+    throw new Error("AI returned an empty response");
+  } catch (error: any) {
+    console.error("Gemini Parsing Error:", error);
+    throw new Error(error.message || "Failed to analyze text");
   }
 };
