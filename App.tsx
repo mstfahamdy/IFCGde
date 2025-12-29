@@ -23,7 +23,7 @@ const INPUT_CLASS = "w-full px-4 py-3 rounded-xl border border-gray-700 focus:ri
 
 // --- SUB-COMPONENTS ---
 
-const SearchableSelect = ({ options, value, onChange, placeholder, className, strict }: { options: any[], value: string, onChange: (val: string) => void, placeholder?: string, className?: string, strict?: boolean }) => {
+const SearchableSelect = ({ options, value, onChange, placeholder, className }: { options: any[], value: string, onChange: (val: string) => void, placeholder?: string, className?: string }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [localSearch, setLocalSearch] = useState(value);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -81,10 +81,69 @@ const StatusBadge = ({ status, t }: { status?: OrderStatus, t: any }) => {
     'On Hold': 'bg-orange-900/30 text-orange-300 border-orange-800',
     'Canceled': 'bg-gray-700 text-gray-400 border-gray-600',
   };
-  const statusKeyMap: Record<string, string> = { 'Pending Assistant': 'status_pendingAssistant', 'Pending Finance': 'status_pendingFinance', 'Approved': 'status_approved', 'Rejected': 'status_rejected', 'Ready for Driver': 'status_readyDriver', 'Partially Shipped': 'status_partiallyShipped', 'In Transit': 'status_inTransit', 'Completed': 'status_completed', 'On Hold': 'status_onHold', 'Canceled': 'status_canceled' };
+  const statusKeyMap: Record<string, string> = { 
+    'Pending Assistant': 'status_pendingAssistant', 
+    'Pending Finance': 'status_pendingFinance', 
+    'Approved': 'status_approved', 
+    'Rejected': 'status_rejected', 
+    'Ready for Driver': 'status_readyDriver', 
+    'Partially Shipped': 'status_partiallyShipped', 
+    'In Transit': 'status_inTransit', 
+    'Completed': 'status_completed', 
+    'On Hold': 'status_onHold', 
+    'Canceled': 'status_canceled' 
+  };
   const style = status ? styles[status] : 'bg-gray-700 text-gray-300';
   const label = status ? t[statusKeyMap[status]] || status : status;
   return <span className={`px-3 py-1 rounded-full text-[10px] font-bold border ${style} whitespace-nowrap font-['Alexandria']`}>{label}</span>;
+};
+
+const LoginModal = ({ role, onClose, onSuccess, t }: { role: Role, onClose: () => void, onSuccess: (user: UserProfile) => void, t: any }) => {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleLogin = () => {
+    const user = getUserByPin(pin);
+    if (user && user.role === role) {
+      onSuccess(user);
+    } else {
+      setError(true);
+      setTimeout(() => setError(false), 1000);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-6">
+      <div className={`bg-gray-900 border ${error ? 'border-red-500 animate-shake' : 'border-gray-800'} rounded-3xl p-8 w-full max-w-sm shadow-2xl space-y-6 transition-all`}>
+        <div className="flex justify-between items-start">
+          <div className="p-3 bg-blue-600/20 text-blue-500 rounded-2xl">
+            <KeyRound size={28} />
+          </div>
+          <button onClick={onClose} className="p-2 text-gray-500 hover:text-white transition-colors"><X size={24} /></button>
+        </div>
+        <div>
+          <h3 className="text-xl font-black text-white">{t.accessCode}</h3>
+          <p className="text-gray-500 text-sm mt-1">{t.useCodeMsg}</p>
+        </div>
+        <input 
+          type="password" 
+          value={pin} 
+          onChange={(e) => setPin(e.target.value)}
+          placeholder={t.enterPin}
+          className={`${INPUT_CLASS} text-center text-2xl tracking-[0.5em] font-black`}
+          onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+          autoFocus
+        />
+        {error && <p className="text-red-500 text-xs font-bold text-center">{t.invalidCode}</p>}
+        <button 
+          onClick={handleLogin}
+          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-blue-900/20 active:scale-95"
+        >
+          {t.accessDashboard}
+        </button>
+      </div>
+    </div>
+  );
 };
 
 // --- MAIN APP ---
@@ -94,7 +153,6 @@ export default function App() {
   const t = TRANSLATIONS[lang];
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [globalOrders, setGlobalOrders] = useState<SalesOrder[]>([]);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [loginTargetRole, setLoginTargetRole] = useState<Role | null>(null);
 
   const [salesView, setSalesView] = useState<'entry' | 'history'>('entry');
@@ -102,12 +160,12 @@ export default function App() {
   const [isMagicImportOpen, setIsMagicImportOpen] = useState(false);
 
   const [order, setOrder] = useState<SalesOrder>({
-    customerName: '', areaLocation: '', orderDate: new Date().toISOString().split('T')[0], receivingDate: '', deliveryShift: 'أول نقلة', deliveryType: 'Own Cars', items: [], overallNotes: '', serialNumber: generateSerialNumber()
+    customerName: '', areaLocation: '', orderDate: new Date().toISOString().split('T')[0], receivingDate: '', 
+    deliveryShift: 'أول نقلة', deliveryType: 'Own Cars', items: [], overallNotes: '', serialNumber: generateSerialNumber()
   });
   const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'success'>('idle');
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Load orders
   useEffect(() => {
     const data = localStorage.getItem(CLOUD_STORAGE_KEY);
     if (data) setGlobalOrders(JSON.parse(data));
@@ -125,6 +183,27 @@ export default function App() {
     }));
   };
 
+  const addItem = () => {
+    setOrder({
+      ...order,
+      items: [...order.items, { id: generateId(), itemName: '', quantity: 0 }]
+    });
+  };
+
+  const removeItem = (id: string) => {
+    setOrder({
+      ...order,
+      items: order.items.filter(i => i.id !== id)
+    });
+  };
+
+  const updateItem = (id: string, field: keyof OrderItem, value: any) => {
+    setOrder({
+      ...order,
+      items: order.items.map(i => i.id === id ? { ...i, [field]: value } : i)
+    });
+  };
+
   const handleSubmitOrder = async () => {
     if (!order.customerName || !order.areaLocation || !order.receivingDate) {
       setValidationError(t.validationClient);
@@ -134,15 +213,26 @@ export default function App() {
       setValidationError(t.validationItems);
       return;
     }
+    if (order.items.some(i => !i.itemName || i.quantity <= 0)) {
+      setValidationError(t.validationItemDetails);
+      return;
+    }
 
+    setValidationError(null);
     setSubmissionStatus('submitting');
+    
     const newOrder: SalesOrder = {
       ...order,
       id: generateId(),
       status: 'Pending Assistant',
       createdBy: currentUser?.email,
       creatorName: currentUser?.name,
-      history: [{ role: 'Sales Supervisor', action: 'Order Created', date: new Date().toLocaleString(), user: currentUser?.name || 'User' }]
+      history: [{ 
+        role: 'Sales Supervisor', 
+        action: 'Order Created', 
+        date: new Date().toLocaleString(), 
+        user: currentUser?.name || 'User' 
+      }]
     };
 
     setTimeout(() => {
@@ -158,7 +248,7 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-6 font-['Alexandria']">
         <div className="w-full max-w-md space-y-8">
           <div className="text-center">
             <div className="inline-flex p-4 bg-blue-600/10 rounded-3xl mb-4">
@@ -183,7 +273,7 @@ export default function App() {
                 className="flex items-center justify-between p-5 bg-gray-900 border border-gray-800 rounded-2xl hover:border-blue-500/50 hover:bg-gray-800 transition-all group"
               >
                 <div className="flex items-center gap-4">
-                  <div className={`p-3 rounded-xl bg-${r.color}-500/10 text-${r.color}-500 group-hover:scale-110 transition-transform`}>
+                  <div className="p-3 rounded-xl bg-gray-800 text-blue-500 group-hover:scale-110 transition-transform">
                     <r.icon size={22} />
                   </div>
                   <span className="font-bold text-gray-200 text-lg">{r.label}</span>
@@ -256,5 +346,121 @@ export default function App() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase px-1">{t.receivingDate}</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-4 top-3.5 text-gray-500 pointer-events-none
+                  <input type="date" className={INPUT_CLASS} value={order.receivingDate} onChange={e => setOrder({...order, receivingDate: e.target.value})} />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 uppercase px-1">{t.deliveryShift}</label>
+                  <select className={INPUT_CLASS} value={order.deliveryShift} onChange={e => setOrder({...order, deliveryShift: e.target.value as any})}>
+                    {DELIVERY_SHIFTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-800">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2"><ShoppingCart size={20} className="text-blue-500" /> {t.orderItems}</h3>
+                  <button onClick={addItem} className="text-blue-500 hover:text-blue-400 font-bold text-sm flex items-center gap-1 bg-blue-500/10 px-3 py-1.5 rounded-lg transition-colors"><Plus size={16} /> {t.addItem}</button>
+                </div>
+
+                <div className="space-y-3">
+                  {order.items.length === 0 ? (
+                    <div className="text-center py-10 border-2 border-dashed border-gray-800 rounded-2xl">
+                      <Package className="w-10 h-10 text-gray-700 mx-auto mb-2" />
+                      <p className="text-gray-600 text-sm font-medium">{t.noItems}</p>
+                    </div>
+                  ) : (
+                    order.items.map((item, idx) => (
+                      <div key={item.id} className="flex flex-wrap gap-3 p-4 bg-gray-950 border border-gray-800 rounded-2xl animate-in zoom-in-95 duration-200">
+                        <div className="flex-1 min-w-[240px]">
+                          <SearchableSelect options={PRODUCT_CATALOG} placeholder={t.searchProduct} value={item.itemName} onChange={v => updateItem(item.id, 'itemName', v)} />
+                        </div>
+                        <div className="w-32">
+                          <input type="number" placeholder={t.qty} className={INPUT_CLASS} value={item.quantity || ''} onChange={e => updateItem(item.id, 'quantity', parseInt(e.target.value) || 0)} />
+                        </div>
+                        <button onClick={() => removeItem(item.id)} className="p-3 text-red-500 hover:bg-red-900/20 rounded-xl transition-all"><Trash2 size={20}/></button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-500 uppercase px-1">{t.overallNotes}</label>
+                <textarea placeholder={t.overallNotesPlaceholder} className={`${INPUT_CLASS} h-24 resize-none`} value={order.overallNotes} onChange={e => setOrder({...order, overallNotes: e.target.value})} />
+              </div>
+
+              {validationError && (
+                <div className="p-4 bg-red-900/20 border border-red-800 rounded-2xl flex items-center gap-3 text-red-400 text-sm font-bold">
+                  <AlertCircle size={20} /> {validationError}
+                </div>
+              )}
+
+              <button 
+                onClick={handleSubmitOrder}
+                disabled={submissionStatus !== 'idle'}
+                className={`w-full py-4 rounded-2xl font-black text-lg transition-all flex items-center justify-center gap-3 shadow-xl ${
+                  submissionStatus === 'success' ? 'bg-green-600 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'
+                } disabled:opacity-50`}
+              >
+                {submissionStatus === 'idle' && <><Send size={22} /> {t.submitOrder}</>}
+                {submissionStatus === 'submitting' && <><Loader2 className="animate-spin" size={22} /> {t.processing}</>}
+                {submissionStatus === 'success' && <><CheckCircle2 size={22} /> {t.successTitle}</>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
+              <input 
+                placeholder={t.searchPlaceholder} 
+                className={`${INPUT_CLASS} pl-12`} 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
+            <div className="grid gap-4">
+              {filteredOrders.length === 0 ? (
+                <div className="text-center py-20 bg-gray-900/30 rounded-3xl border border-gray-800">
+                  <ClipboardList className="w-16 h-16 text-gray-800 mx-auto mb-4" />
+                  <p className="text-gray-500 font-bold">{t.emptySearch}</p>
+                </div>
+              ) : (
+                filteredOrders.map((o) => (
+                  <div key={o.id} className="bg-gray-900 border border-gray-800 rounded-3xl p-5 hover:border-blue-500/30 transition-all group shadow-lg">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-blue-500 font-black text-lg">#{o.serialNumber}</span>
+                          <StatusBadge status={o.status} t={t} />
+                        </div>
+                        <h3 className="font-black text-white text-xl">{o.customerName}</h3>
+                        <p className="text-gray-500 text-xs flex items-center gap-1 font-bold mt-1"><MapPin size={12}/> {o.areaLocation}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-gray-600 font-bold uppercase tracking-tighter">{t.receivingDate}</p>
+                        <p className="text-sm font-black text-gray-400">{o.receivingDate}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-4 border-t border-gray-800">
+                      <div className="flex items-center gap-4">
+                        <div className="flex -space-x-2">
+                           {/* Simple representation of items count */}
+                           <div className="w-8 h-8 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-[10px] font-black text-blue-500">{o.items.length}</div>
+                        </div>
+                        <span className="text-xs text-gray-500 font-bold">{t.totalQty}: {o.items.reduce((acc, i) => acc + i.quantity, 0)}</span>
+                      </div>
+                      <button className="text-blue-500 hover:bg-blue-500/10 p-2 rounded-xl transition-colors"><ArrowRight size={20}/></button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

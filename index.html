@@ -16,7 +16,6 @@
         margin: 0;
         overflow-x: hidden;
       }
-      /* Custom scrollbar for a premium look */
       ::-webkit-scrollbar {
         width: 8px;
       }
@@ -40,10 +39,9 @@
       }
     </style>
     <script>
-      // Shim process.env to prevent "white paper" crashes during initialization
       window.process = {
         env: {
-          API_KEY: "" // Will be injected by the environment
+          API_KEY: "" 
         }
       };
     </script>
